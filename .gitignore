@@ -1,0 +1,5 @@
+*.pyc
+.project
+.pydevproject
+.settings/
+Plurk_Loso.egg-info/

@@ -1,5 +1,18 @@
 from setuptools import setup
 
+extra = {}
+
+try:
+    from loso import scripts
+except ImportError:
+    pass
+else:
+    extra['cmdclass'] = {
+        'interact': scripts.InteractCommand,
+        'feed': scripts.FeedCommand,
+        'reset': scripts.ResetCommand
+    }
+
 setup(
     name='Plurk_Loso',
     version='0.1',
@@ -12,5 +25,6 @@ setup(
     install_requires=[
         'redis',
         'pyyaml'
-    ]
+    ],
+    **extra
 )

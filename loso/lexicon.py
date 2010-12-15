@@ -245,13 +245,15 @@ class LexiconDatabase(object):
             for term in util.ngram(n, text):
                 count = int(self.get(term) or 0)
                 n = len(term)
-                v = float(self.getNgramSum(n))/float(self.getNgramCount(n))
-                v = v*v
+                if self.getNgramSum(n) is None:
+                    v = 1
+                else:
+                    v = float(self.getNgramSum(n))/float(self.getNgramCount(n))
+                    v = v*v
                 score = count/v
                 if score == 0:
                     score = 0.00000001
                 
-                head_tail_score = 0
                 head = 0
                 tail = 0
                 head_tail = self.getHeadTail(term)

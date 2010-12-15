@@ -1,9 +1,5 @@
 # -*- coding: utf8 -*-
 import logging
-from SimpleXMLRPCServer import SimpleXMLRPCServer
-from SimpleXMLRPCServer import SimpleXMLRPCRequestHandler
-
-import yaml
 
 from loso import lexicon
 
@@ -51,24 +47,3 @@ class SegumentService(object):
         
         """
         return list(lexicon.iterEnglishTerms(text))
-    
-def main():
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger('segment.main')
-    
-    config = yaml.load(open('config.yaml', 'rt'))
-    
-    service = SegumentService()
-    
-    xmlrpc_config = config['xmlrpc']
-    interface = xmlrpc_config.get('interface', '0.0.0.0')
-    port = xmlrpc_config.get('port', 5566)
-    logger.info('Start segmentation service at %s:%d', interface, port)
-    
-    server = SimpleXMLRPCServer((interface, port), allow_none=True)
-    server.register_introspection_functions()
-    server.register_instance(service)
-    server.serve_forever()
-
-if __name__ == '__main__':
-    main()

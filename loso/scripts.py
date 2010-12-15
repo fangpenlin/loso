@@ -3,7 +3,9 @@ import logging
 from distutils.cmd import Command
 from distutils.errors import DistutilsOptionError
 
-import server
+import yaml
+
+import service
 
 class InteractCommand(Command):
     description = 'provide interact interface for testing splitting terms'
@@ -17,10 +19,10 @@ class InteractCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        service = server.SegumentService()
+        seg_service = service.SegumentService()
         while True:
             text = raw_input('Text:').decode(sys.stdin.encoding)
-            terms = service.splitTerms(text)
+            terms = seg_service.splitTerms(text)
             print ' '.join(terms)
 
 class FeedCommand(Command):
@@ -43,10 +45,9 @@ class FeedCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        service = server.SegumentService()
-        service.feed(self.text)
+        seg_service = service.SegumentService()
+        seg_service.feed(self.text)
         
-
 class ResetCommand(Command):
     description = 'reset lexicon database'
     user_options = []
@@ -59,6 +60,36 @@ class ResetCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        service = server.SegumentService()
-        service.db.reset()
+        seg_service = service.SegumentService()
+        seg_service.db.reset()
         print 'Done.'
+        
+class ServeCommand(Command):
+    description = 'run segmentation server'
+    user_options = [
+        ('config=', 'c', 'path to configuration'),
+    ]
+
+    def initialize_options(self):
+        self.config_file = 'config.yaml'
+    
+    def finalize_options(self):
+        self.config = yaml.load(open(self.config_file, 'rt'))
+
+    def run(self):
+        from SimpleXMLRPCServer import SimpleXMLRPCServer
+
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger('segment.main')
+        
+        seg_service = service.SegumentService()
+        
+        xmlrpc_config = self.config['xmlrpc']
+        interface = xmlrpc_config.get('interface', '0.0.0.0')
+        port = xmlrpc_config.get('port', 5566)
+        logger.info('Start segmentation service at %s:%d', interface, port)
+        
+        server = SimpleXMLRPCServer((interface, port), allow_none=True)
+        server.register_introspection_functions()
+        server.register_instance(seg_service)
+        server.serve_forever()

@@ -10,7 +10,8 @@ else:
     extra['cmdclass'] = {
         'interact': scripts.InteractCommand,
         'feed': scripts.FeedCommand,
-        'reset': scripts.ResetCommand
+        'reset': scripts.ResetCommand,
+        'serve': scripts.ServeCommand
     }
 
 setup(

@@ -1,0 +1,10 @@
+---
+
+xmlrpc:
+        
+    interface: 0.0.0.0
+    
+    # 5566 is so cool! just kidding
+    port: 5566
+
+...

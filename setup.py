@@ -10,6 +10,7 @@ setup(
     long_description=__doc__,
     packages=['loso'],
     install_requires=[
-        'redis'
+        'redis',
+        'pyyaml'
     ]
 )

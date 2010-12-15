@@ -26,7 +26,7 @@ def splitSentence(text, delimiters=None):
     yield ''.join(sentence)
     
 def iterTerms(n, text, emmit_head_tail=True):
-    """Iterate terms in given text and return a generator. 
+    """Iterate n-gram terms in given text and return a generator. 
     
     All English in 
     terms will be lower case. All first and last terms in a sentence will be
@@ -202,6 +202,47 @@ class LexiconDatabase(object):
         
         """
         return self.redis.get('%s%d-gram_count' % (self.meta_prefix, n))
+    
+    def getStats(self):
+        """Get statistics information
+        
+        """
+        stats = {}
+        n = 1
+        while True:
+            sum = self.getNgramSum(n)
+            count = self.getNgramCount(n)
+            if not sum or not count:
+                break
+            sum_key = '%s-gram_sum' % n
+            count_key = '%s-gram_count' % n
+            stats[sum_key] = sum
+            stats[count_key] = count
+            n += 1
+        return stats
+    
+    def splitTerms(self, text, ngram=4):
+        """Split text into terms
+        
+        """
+        grams = []
+        for n in xrange(1, ngram+1):
+            terms = []
+            for term in util.ngram(n, text):
+                count = int(self.get(term) or 0)
+                n = len(term)
+                v = float(self.getNgramSum(n))/float(self.getNgramCount(n))
+                v = v*v
+                score = count/v
+                if score == 0:
+                    score = 0.00000001
+                self.logger.debug('Term=%s, Count=%s, Score=%s', 
+                                  term, count, score)
+                terms.append((term, score))
+            grams.append(terms)
+        terms, best_score = findBestSegment(grams)
+        self.logger.debug('Best score: %s', best_score)
+        return terms
         
 class LexiconBuilder(object):
     
@@ -213,8 +254,12 @@ class LexiconBuilder(object):
         self.ngram = ngram
     
     def feed(self, text):
+        """Feed text into lexicon database and return total terms has been fed
+        
+        """
+        total = 0
         for n in xrange(1, self.ngram+1):
-            self.logger.info('Processing %d-gram', n)
+            self.logger.debug('Processing %d-gram', n)
             terms_count = {}
             sum = 0
             count = 0
@@ -224,6 +269,7 @@ class LexiconBuilder(object):
                 if terms_count[term] == 0:
                     count += 1
                 terms_count[term] += 1
+                total += 1
             # add terms to database
             for term, delta in terms_count.iteritems():
                 result = self.db.increase(term, delta)
@@ -231,61 +277,8 @@ class LexiconBuilder(object):
                 self.logger.debug('Increase term %r to %d', term, result)
             # add n-gram count
             result = self.db.increaseNgramSum(n, sum)
-            self.logger.info('Increase %d-gram sum to %d', n, result)
+            self.logger.debug('Increase %d-gram sum to %d', n, result)
             result = self.db.increaseNgramCount(n, count)
-            self.logger.info('Increase %d-gram count to %d', n, result)
-            
-if __name__ == '__main__':
-    import codecs
-    logging.basicConfig(level=logging.INFO)
-    db = LexiconDatabase()
-    
-    for n in xrange(1, 5):
-        print '-'*10, 'n', n, '-'*10
-        print 'Sum', db.getNgramSum(n)
-        print 'Count', db.getNgramCount(n)
-        v = float(db.getNgramSum(n))/float(db.getNgramCount(n))
-        print 'v', v
-        
-    def analysis(s):
-        grams = []
-        for n in xrange(1, 5):
-            terms = []
-            for term in iterTerms(n, s, False):
-                count = int(db.get(term) or 0)
-                n = len(term)
-                v = float(db.getNgramSum(n))/float(db.getNgramCount(n))
-                v = v*v
-                #print 'v of %s-gram' % n, v
-                # lower the score of unigram
-                #if n == 1:
-                #   v *= 100
-                #print term, count, count/v, db.getHeadTail(term)
-                terms.append((term, count/v))
-            grams.append(terms)
-        #print repr(grams)
-        terms, value = findBestSegment(grams)
-        print ' '.join(terms)
-        #print '-'*5, s, '-'*5
-    
-    analysis(u'今天天氣真好')
-    analysis(u'我晚餐想吃漢堡')
-    analysis(u'下班回家窩')
-    analysis(u'花蓮真是一個生活步調很奇妙的地方')
-    analysis(u'今天終於知道為什麼要常常在學校了')
-    analysis(u'對外公布大批美國政府的外交機密文件')
-    analysis(u'只想在對得起家人跟對得起自己之中尋得一個平衡點')
-    analysis(u'大吃裡面那家雞肉飯的泰式火鍋好吃耶')
-    analysis(u'靠吃素來減少肉類碳排放不容易')
-    analysis(u'今天真是禍不單行')
-    
-#    db.reset()
-#    builder = LexiconBuilder(db)
-#    file = codecs.open('sample_tr_ch', 'rt', 'utf8')
-#    content = file.read()
-#    #content = '\n'.join(content)
-#    #print len(content)
-#    builder.feed(content)
-#    print 'done'
-#    
-    #db.getHeadTailTerms()
+            self.logger.debug('Increase %d-gram count to %d', n, result)
+        self.logger.info('Fed %d terms', total)
+        return total

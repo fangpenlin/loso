@@ -46,6 +46,12 @@ class SegumentService(object):
         """
         return lexicon.splitSentence(text)
     
+    def extractEnglishTerms(self, text):
+        """Extract English terms from Chinese text
+        
+        """
+        return list(lexicon.iterEnglishTerms(text))
+    
 def main():
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger('segment.main')

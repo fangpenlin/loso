@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import re
 import logging
 
 from redis import Redis
@@ -8,6 +9,19 @@ from loso import util
 
 # default delimiters for splitSentence
 default_delimiters = set(u"""\n\r\t ,.:"()[]{}。，、；：！「」『』─（）﹝﹞…﹏＿‧""")
+
+eng_term_pattern = """[a-zA-Z0-9\\-_']+"""
+
+def iterEnglishTerms(text):
+    """Iterator English terms from Chinese text
+    
+    """
+    terms = []
+    parts = text.split()
+    for part in parts:
+        for term in re.finditer(eng_term_pattern, part):
+            terms.append(term.group(0))
+    return terms
 
 def splitSentence(text, delimiters=None):
     """Split article into sentences by delimiters
@@ -236,8 +250,19 @@ class LexiconDatabase(object):
                 score = count/v
                 if score == 0:
                     score = 0.00000001
-                self.logger.debug('Term=%s, Count=%s, Score=%s', 
-                                  term, count, score)
+                
+                head_tail_score = 0
+                head = 0
+                tail = 0
+                head_tail = self.getHeadTail(term)
+                if head_tail is not None and n != 1:
+                    head, tail = head_tail
+                    if head > 3 and tail > 3:
+                        score += (head + tail) / v
+                
+                self.logger.debug(
+                    'Term=%s, Count=%s, Head=%s, Tail=%s, Score=%s', 
+                    term, count, head, tail, score)
                 terms.append((term, score))
             grams.append(terms)
         terms, best_score = findBestSegment(grams)

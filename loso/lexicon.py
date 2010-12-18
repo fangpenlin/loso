@@ -249,7 +249,7 @@ class LexiconDatabase(object):
                     v = 1
                 else:
                     v = float(self.getNgramSum(n))/float(self.getNgramCount(n))
-                    v = v*v
+                    v *= v
                 score = count/v
                 if score == 0:
                     score = 0.00000001

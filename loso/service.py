@@ -36,6 +36,17 @@ class SegumentService(object):
                 terms.extend(self.db.splitTerms(sentence, self.ngram))
         return terms
     
+    def splitNgramTerms(self, text):
+        """Split text into 1 to n gram terms
+        
+        """
+        terms = []
+        for sentence in lexicon.splitSentence(text):
+            if sentence:
+                for n in xrange(1, self.ngram+1):
+                    terms.extend(lexicon.iterTerms(n, sentence, False))
+        return terms
+    
     def splitSentence(self, text):
         """Split text into sentence
         

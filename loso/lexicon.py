@@ -13,7 +13,7 @@ default_delimiters = set(u"""\n\r\t ,.:"()[]{}。，、；：！「」『』─�
 eng_term_pattern = """[a-zA-Z0-9\\-_']+"""
 
 def iterEnglishTerms(text):
-    """Iterator English terms from Chinese text
+    """Iterate English terms from Chinese text
     
     """
     terms = []
@@ -21,6 +21,43 @@ def iterEnglishTerms(text):
     for part in parts:
         for term in re.finditer(eng_term_pattern, part):
             terms.append(term.group(0))
+    return terms
+
+def iterMixTerms(text, eng_prefix='E'):
+    """Iterate English terms and Chinese sentence, for example
+    
+        "C1C2C3C4 E1 E2 C5C6" 
+    
+    will return
+     
+        ["C1C2C3C4", "Ee1", "Ee2", "C5C6"]
+    
+    Another real example:
+    
+        "請問一下為什麼我的ip會block ?"
+        
+    will return
+    
+        [u"請問一下為什麼我的", u'Eip', u"會", u'Eblock']    
+    
+    """
+    # last position term
+    terms = []
+    parts = text.split()
+    for part in parts:
+        last = 0
+        for match in re.finditer(eng_term_pattern, part):
+            previous_term = part[last:match.start()]
+            if previous_term:
+                terms.append(previous_term)
+            if eng_prefix:
+                terms.append(eng_prefix + match.group(0).lower())
+            else:
+                terms.append(match.group(0).lower())
+            last = match.end()
+        final_term = part[last:]
+        if final_term:
+            terms.append(final_term)
     return terms
 
 def splitSentence(text, delimiters=None):

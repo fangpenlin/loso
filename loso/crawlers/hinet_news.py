@@ -1,3 +1,4 @@
+import codecs
 import urllib2
 import cStringIO as StringIO
 
@@ -48,7 +49,7 @@ def crawelCategory(rss_url):
         yield ' '.join(getNewsText(link))
         
 def main():
-    with open('hinet_news.txt', 'wt') as file:
+    with codecs.open('hinet_news.txt', 'wt', encoding='utf8') as file:
         for url in rss_urls:
             for text in crawelCategory(url):
                 print text

@@ -93,3 +93,27 @@ class ServeCommand(Command):
         server.register_introspection_functions()
         server.register_instance(seg_service)
         server.serve_forever()
+        
+class DumpCommand(Command):
+    description = 'dump lexicon database as a text file'
+    user_options = [
+        ('file=', 'f', '/path/to/text'),
+        ('encoding=', 'e', 'encoding of text file'),
+    ]
+
+    def initialize_options(self):
+        self.encoding = 'utf8'
+        self.file = None
+    
+    def finalize_options(self):
+        import codecs
+        if not self.file:
+            raise DistutilsOptionError('Must set text file path to feed')
+        self.text_file = codecs.open(self.file, 'wt', encoding=self.encoding)
+
+    def run(self):
+        logging.basicConfig(level=logging.DEBUG)
+        seg_service = service.SegumentService()
+        seg_service.db.dump(self.text_file)
+        self.text_file.close()
+        print 'Done.'

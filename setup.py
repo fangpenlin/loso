@@ -14,7 +14,8 @@ else:
         'interact': scripts.InteractCommand,
         'feed': scripts.FeedCommand,
         'reset': scripts.ResetCommand,
-        'serve': scripts.ServeCommand
+        'serve': scripts.ServeCommand,
+        'dump': scripts.DumpCommand
     }
 
 setup(

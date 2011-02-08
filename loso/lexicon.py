@@ -164,6 +164,8 @@ def findBestSegment(grams, op=lambda a, b: a*b):
 
 class LexiconDatabase(object):
     
+    progress_interval = 10000
+    
     def __init__(
         self, 
         lexicon_prefix='Lexicon_', 
@@ -309,6 +311,37 @@ class LexiconDatabase(object):
         terms, best_score = findBestSegment(grams)
         self.logger.debug('Best score: %s', best_score)
         return terms
+    
+    def dump(self, file):
+        self.logger.info('Dumping meta-data ...')
+        keys = self.redis.keys(self.meta_prefix + '*')
+        if not keys:
+            self.logger.error('The lexicon database is empty, nothing to dump')
+            return
+        keys = sorted(keys)
+        meta_values = self.redis.mget(keys)
+        for key, value in zip(keys, meta_values):
+            name = key[len(self.meta_prefix):]
+            print >>file, name, value
+            self.logger.info('Meta-data %s=%s', name, value)
+        
+        # a blank line
+        print >>file
+        
+        self.logger.info('Dumping lexicons keys ...')
+        keys = self.redis.keys(self.lexicon_prefix + '*')
+        self.logger.info('Get %d keys', len(keys))
+        self.logger.info('Dumping lexicons values ...')
+        values = self.redis.mget(keys)
+        self.logger.info('Get %d values', len(values))
+        for i, (key, value) in enumerate(zip(keys, values)):
+            term = key[len(self.lexicon_prefix):].decode('utf8')
+            print >>file, value, term
+            if i % self.progress_interval == 0:
+                if i % self.progress_interval == 0:
+                    whole = len(keys)
+                    per = (i/float(whole))*100.0
+                    self.logger.info('Progress %d/%d (%02d%%)', i, whole, per)
         
 class LexiconBuilder(object):
     
@@ -343,9 +376,9 @@ class LexiconBuilder(object):
                 result = self.db.increase(term, delta)
                 sum += delta
                 if i % self.progress_interval == 0:
-                    n = len(terms_count)
-                    per = (i/float(n))*100.0
-                    self.logger.info('Progress %d/%d (%02d%%)', i, n, per)
+                    whole = len(terms_count)
+                    per = (i/float(whole))*100.0
+                    self.logger.info('Progress %d/%d (%02d%%)', i, whole, per)
                                       
             # add n-gram count
             result = self.db.increaseNgramSum(n, sum)

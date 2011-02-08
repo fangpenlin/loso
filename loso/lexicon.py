@@ -24,7 +24,7 @@ def iterEnglishTerms(text):
     return terms
 
 def iterMixTerms(text, eng_prefix='E'):
-    """Iterate English terms and Chinese sentence, for example
+    """Iterate sentence which contains English and Chinese terms, for example
     
         "C1C2C3C4 E1 E2 C5C6" 
     
@@ -32,13 +32,15 @@ def iterMixTerms(text, eng_prefix='E'):
      
         ["C1C2C3C4", "Ee1", "Ee2", "C5C6"]
     
-    Another real example:
+    Another example in real lief:
     
         "請問一下為什麼我的ip會block ?"
         
     will return
     
         [u"請問一下為什麼我的", u'Eip', u"會", u'Eblock']    
+        
+    The eng_prefix is the prefix which will be add to front of English terms
     
     """
     # last position term
@@ -310,6 +312,8 @@ class LexiconDatabase(object):
         
 class LexiconBuilder(object):
     
+    progress_interval = 10000
+    
     def __init__(self, db, ngram=4, logger=None):
         self.logger = logger
         if self.logger is None:
@@ -335,10 +339,14 @@ class LexiconBuilder(object):
                 terms_count[term] += 1
                 total += 1
             # add terms to database
-            for term, delta in terms_count.iteritems():
+            for i, (term, delta) in enumerate(terms_count.iteritems()):
                 result = self.db.increase(term, delta)
                 sum += delta
-                self.logger.debug('Increase term %r to %d', term, result)
+                if i % self.progress_interval == 0:
+                    n = len(terms_count)
+                    per = (i/float(n))*100.0
+                    self.logger.info('Progress %d/%d (%02d%%)', i, n, per)
+                                      
             # add n-gram count
             result = self.db.increaseNgramSum(n, sum)
             self.logger.debug('Increase %d-gram sum to %d', n, result)

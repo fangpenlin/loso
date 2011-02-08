@@ -8,7 +8,7 @@ class SegumentService(object):
     def __init__(self, ngram=4, logger=None):
         self.logger = logger
         if self.logger is None:
-            self.logger = logging.getLogger('segment.service')
+            self.logger = logging.getLogger(__name__)
         self.ngram = ngram
         self.db = lexicon.LexiconDatabase()
         self.builder = lexicon.LexiconBuilder(self.db, self.ngram)

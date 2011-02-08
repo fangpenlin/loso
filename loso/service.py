@@ -19,14 +19,14 @@ class SegumentService(object):
         """
         return self.db.getStats()
     
-    def feed(self, text):
+    def feed(self, category, text):
         """Feed text data to lexicon database
         
         """
         self.logger.info('Feed %d bytes data', len(text))
-        return self.builder.feed(text)
+        return self.builder.feed(category, text)
         
-    def splitTerms(self, text):
+    def splitTerms(self, text, categories=None):
         """Split text into terms
         
         """
@@ -39,7 +39,7 @@ class SegumentService(object):
                         terms.append(mixed)
                     # Chinese sentence
                     else:
-                        terms.extend(self.db.splitTerms(mixed, self.ngram))
+                        terms.extend(self.db.splitTerms(mixed, categories))
         return terms
     
     def splitNgramTerms(self, text):

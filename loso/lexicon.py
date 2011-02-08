@@ -162,187 +162,295 @@ def findBestSegment(grams, op=lambda a, b: a*b):
             table[current_range] = winner
     return table[(0, size-1)]
 
-class LexiconDatabase(object):
+class LexiconCategory(object):
     
     progress_interval = 10000
     
-    def __init__(
-        self, 
-        lexicon_prefix='Lexicon_', 
-        meta_prefix='Meta_', 
-        logger=None
-    ):
+    def __init__(self, db, name, logger=None):
         self.logger = logger
         if self.logger is None:
             self.logger = logging.getLogger('lexicon.database')
-        self.redis = Redis()
-        self.lexicon_prefix = lexicon_prefix
-        self.meta_prefix = meta_prefix
+        self.db = db
+        # name of category
+        self.name = name
+        assert ':' not in self.name, """ ":" can't be part of category name"""
         
-    def getHeadTailTerms(self):
-        """Get all terms which appears both in head and tails
+        # prefix of this category
+        self.prefix = db.prefix + self.name + ':'
+        self._meta_prefix = self.prefix + 'meta:'
+        self._lexicon_prefix = self.prefix + 'lex:'
+        self._terms_key = self.prefix + 'terms'
+       
+    def init(self, ngram=4):
+        """Initialize category in database
         
         """
-        def getKeys(prefix):
-            keys = self.redis.keys(prefix + '*')
-            # strip prefix
-            keys = map(lambda x: x.decode('utf8').lstrip(prefix), keys)
-            # filter by length
-            keys = filter(lambda x: len(x) > 1, keys)
-            return set(keys)
+        # add to category set
+        if not self.db.redis.sadd(self.db._category_set_key, self.name):
+            # already exists
+            self.logger.info('Category %s already exists', self.name)
+            return
+        self.setMeta('gram', ngram)
+        for n in xrange(ngram):
+            self.increaseGramSum(n, 0)
+            self.increaseGramVariety(n, 0)
+        self.logger.info('Add category %s (gram=%s)', self.name, ngram)
         
-        head_prefix = self.lexicon_prefix + 'B'
-        head_keys = getKeys(head_prefix)
+    def clean(self):
+        """Clean all value of this category
         
-        tail_prefix = self.lexicon_prefix + 'E'
-        tail_keys = getKeys(tail_prefix)
+        """
+        # remove terms
+        terms = self.getTermList()
+        keys = [self._lexicon_prefix + term for term in terms]
+        self.db.redis.delete(*keys)
         
-        common_set = head_keys & tail_keys
-        values = self.redis.mget([self.prefix + term for term in common_set])
+        # remove meta keys
+        for n in self.gram:
+            self.db.redis.delete(self._meta_prefix + ('%s-gram-sum' % n))
+            self.db.redis.delete(self._meta_prefix + ('%s-gram-variety' % n))
+        self.db.redis.delete(self._meta_prefix + 'gram')
         
-        for term, value in zip(common_set, values):
-            value = int(value)
-            yield term, value
+        # remove this category from category set
+        self.db.redis.srem(self.db._category_set_key, self.name)
+        
+        self.logger.info('Clean category %r, %d terms are deleted', 
+                         self.name, len(terms))
+        
+    def getMeta(self, key):
+        """Get value of a meta data
+        
+        """
+        return self.db.redis.get(self._meta_prefix + key)
     
-    def getHeadTail(self, key):
-        head = self.redis.get(self.lexicon_prefix + 'B' + key)
-        tail = self.redis.get(self.lexicon_prefix + 'E' + key)
-        if not (head and tail):
-            return None
-        return int(head), int(tail)
-        
-    def reset(self):
-        """Clean lexicon up
+    def setMeta(self, key, value):
+        """Set value of a meta data
         
         """
-        keys = self.redis.keys(self.lexicon_prefix + '*')
-        if keys:
-            self.redis.delete(*keys)
-        keys = self.redis.keys(self.meta_prefix + '*')
-        if keys:
-            self.redis.delete(*keys)
+        return self.db.redis.set(self._meta_prefix + key, value)
     
-    def get(self, key):
-        """Get a value from database by key
-        
-        """
-        return self.redis.get(self.lexicon_prefix + key)
-        
-    def increase(self, key, value=1):
-        """Increase count of a word
-        
-        """
-        return self.redis.incr(self.lexicon_prefix + key, value)
+    @property
+    def gram(self):
+        return self.getMeta('gram')
     
-    def increaseNgramSum(self, n, value):
+    def increaseTerm(self, term, delta=1):
+        """Increase value of a term
+        
+        """
+        # increase number
+        key = self._lexicon_prefix + term
+        self.db.redis.incr(key, delta)
+        # add to terms set
+        self.db.redis.sadd(self._terms_key, term)
+        
+    def getTerm(self, term):
+        """Get count of a term
+        
+        """
+        key = self._lexicon_prefix + term
+        return self.db.redis.get(key)
+    
+    def getTerms(self, *terms):
+        """Get count of terms
+        
+        """
+        keys = [self._lexicon_prefix + term for term in terms]
+        return self.db.redis.mget(keys)
+    
+    def getTermList(self):
+        """Get all term name in this category
+        
+        """
+        return self.db.redis.smembers(self._terms_key)
+    
+    def increaseGramSum(self, n, value):
         """Increase sum of n-gram terms
         
         """
-        return self.redis.incr('%s%d-gram_sum' % (self.meta_prefix, n), value)
+        key = self._meta_prefix + ('%s-gram-sum' % n)
+        return self.db.redis.incr(key, value)
     
-    def increaseNgramCount(self, n, value):
-        """Increase count of n-gram terms
+    def increaseGramVariety(self, n, value):
+        """Increase variety of n-gram terms
         
         """
-        return self.redis.incr('%s%d-gram_count' % (self.meta_prefix, n), value)
+        key = self._meta_prefix + ('%s-gram-variety' % n)
+        return self.db.redis.incr(key, value)
     
-    def getNgramSum(self, n):
+    def getGramSum(self, n):
         """Get sum of n-gram terms
         
         """
-        return self.redis.get('%s%d-gram_sum' % (self.meta_prefix, n))
+        key = '%s-gram-sum' % n
+        return self.getMeta(key)
     
-    def getNgramCount(self, n):
-        """Get count of n-gram terms
+    def getGramVariety(self, n):
+        """Get variety of n-gram terms
         
         """
-        return self.redis.get('%s%d-gram_count' % (self.meta_prefix, n))
+        key = '%s-gram-variety' % n
+        return self.getMeta(key)
     
     def getStats(self):
-        """Get statistics information
+        """Get statistics of this category
         
         """
         stats = {}
-        n = 1
-        while True:
-            sum = self.getNgramSum(n)
-            count = self.getNgramCount(n)
-            if not sum or not count:
-                break
-            sum_key = '%s-gram_sum' % n
-            count_key = '%s-gram_count' % n
+        for n in xrange(1, self.gram):
+            sum = self.getGramSum(n)
+            variety = self.getGramCount(n)
+            sum_key = '%s-gram-sum' % n
+            variety_key = '%s-gram-variety' % n
             stats[sum_key] = sum
-            stats[count_key] = count
-            n += 1
+            stats[variety_key] = variety
         return stats
-    
-    def splitTerms(self, text, ngram=4):
-        """Split text into terms
-        
-        """
-        grams = []
-        for n in xrange(1, ngram+1):
-            terms = []
-            for term in util.ngram(n, text):
-                count = int(self.get(term) or 0)
-                n = len(term)
-                if self.getNgramSum(n) is None:
-                    v = 1
-                else:
-                    v = float(self.getNgramSum(n))/float(self.getNgramCount(n))
-                    v *= v
-                score = count/v
-                if score == 0:
-                    score = 0.00000001
-                
-                head = 0
-                tail = 0
-                head_tail = self.getHeadTail(term)
-                if head_tail is not None and n != 1:
-                    head, tail = head_tail
-                    if head > 3 and tail > 3:
-                        score += (head + tail) / v
-                
-                self.logger.debug(
-                    'Term=%s, Count=%s, Head=%s, Tail=%s, Score=%s', 
-                    term, count, head, tail, score)
-                terms.append((term, score))
-            grams.append(terms)
-        terms, best_score = findBestSegment(grams)
-        self.logger.debug('Best score: %s', best_score)
-        return terms
-    
+     
     def dump(self, file):
         self.logger.info('Dumping meta-data ...')
-        keys = self.redis.keys(self.meta_prefix + '*')
-        if not keys:
-            self.logger.error('The lexicon database is empty, nothing to dump')
-            return
-        keys = sorted(keys)
-        meta_values = self.redis.mget(keys)
-        for key, value in zip(keys, meta_values):
-            name = key[len(self.meta_prefix):]
+        for n in xrange(1, self.gram):
+            name = '%d-gram-sum' % n
+            value = self.getGramSum(n)
+            print >>file, name, value
+            self.logger.info('Meta-data %s=%s', name, value)
+            name = '%d-gram-variety' % n
+            value = self.getGramVariety(n)
             print >>file, name, value
             self.logger.info('Meta-data %s=%s', name, value)
         
         # a blank line
         print >>file
         
-        self.logger.info('Dumping lexicons keys ...')
-        keys = self.redis.keys(self.lexicon_prefix + '*')
-        self.logger.info('Get %d keys', len(keys))
+        self.logger.info('Dumping lexicons terms ...')
+        terms = self.getTermList()
+        self.logger.info('Get %d terms', len(terms))
         self.logger.info('Dumping lexicons values ...')
-        values = self.redis.mget(keys)
-        self.logger.info('Get %d values', len(values))
-        for i, (key, value) in enumerate(zip(keys, values)):
-            term = key[len(self.lexicon_prefix):].decode('utf8')
-            print >>file, value, term
+        values = self.getTerms(*terms)
+        self.logger.info('Get %d values', len(terms))
+        for i, (term, count) in enumerate(zip(terms, values)):
+            term = term[len(self.lexicon_prefix):].decode('utf8')
+            print >>file, count, term
             if i % self.progress_interval == 0:
                 if i % self.progress_interval == 0:
-                    whole = len(keys)
+                    whole = len(terms)
                     per = (i/float(whole))*100.0
                     self.logger.info('Progress %d/%d (%02d%%)', i, whole, per)
         
+class LexiconDatabase(object):
+    """Lexicon database is for storing lexicon counting information
+    
+    The scheme of database is simple, following are the key value pairs
+    we will use in the Redis database. We assume the prefix of is "loso:" here.
+    
+    First of all, we need to distinguish lexicon into different categories.
+    Therefore we need a category attached with lexicons. Thus, we use following
+    key value pair.
+    
+        loso:category -> Set which contains all categories name
+    
+    With categories, we need meta data for every category, then we employ 
+    following key value pair
+    
+        loso:cat:<category name>:meta:<key> -> meta value
+        
+    And we will need to know all terms we have in a category. Here we use
+    
+        loso:cat:<category name>:terms -> Set which contains all term in category
+        
+    Finally, here comes the lexicon terms, we use following key value pair
+    
+        loso:cat:<category name>:lex:<term> -> Count of term in this category
+    
+    """
+    
+    progress_interval = 10000
+    
+    def __init__(
+        self, 
+        ngram=4,
+        prefix='loso:', 
+        logger=None
+    ):
+        self.logger = logger
+        if self.logger is None:
+            self.logger = logging.getLogger('lexicon.database')
+        self.redis = Redis()
+        self.ngram = ngram
+        self.prefix = prefix
+        
+        self._categories_cache = {}
+        # key for category
+        self._category_set_key = self.prefix + 'category'
+    
+    def getCategory(self, name):
+        """Get category and return, if not exist, just create one
+        
+        """
+        category = self._categories_cache.get(name)
+        if category:
+            return category
+        category = LexiconCategory(self, name)
+        category.init(self.ngram)
+        self._categories_cache[name] = category
+        return category
+    
+    def getCategoryList(self):
+        """Get list of all categories
+        
+        """
+        return self.redis.smembers(self._category_set_key)
+       
+    def clean(self):
+        """Clean lexicon up
+        
+        """
+        categories = self.getCategoryList()
+        if categories:
+            for name in categories:
+                c = self.getCategory(name)
+                c.clean()
+        self.logger.info('Clean lexicon database, %s categories', 
+                         len(categories))
+        
+    def _getTermScore(self, term, ngram, categories):
+        """Get score of a term
+        
+        """
+        sum = 0
+        for c in categories:
+            count = int(c.getTerm(term) or 0)
+            n = len(term)
+            if c.getGramSum(n) is None:
+                v = 1
+            else:
+                v = float(c.getGramSum(n))/float(c.getGramVariety(n))
+                v *= v
+            score = count/v
+            if score == 0:
+                score = 0.00000001
+            sum += score
+        return score
+
+    def splitTerms(self, text, categories=None):
+        """Split text into terms, categories is a list of category to read
+        lexicon data from, if it is empty, it means to get data from all
+        categories
+        
+        """
+        if not categories:
+            categories = self.getCategoryList()
+        c_list = [self.getCategory(name) for name in categories]
+        grams = []
+        for n in xrange(1, self.ngram+1):
+            terms = []
+            for term in util.ngram(n, text):
+                score = self._getTermScore(term, n, c_list)
+                self.logger.debug('Term=%s, Score=%s', term, score)
+                terms.append((term, score))
+            grams.append(terms)
+        terms, best_score = findBestSegment(grams)
+        self.logger.debug('Best score: %s', best_score)
+        return terms
+       
 class LexiconBuilder(object):
     
     progress_interval = 10000
@@ -354,26 +462,27 @@ class LexiconBuilder(object):
         self.db = db
         self.ngram = ngram
     
-    def feed(self, text):
+    def feed(self, category, text):
         """Feed text into lexicon database and return total terms has been fed
         
         """
+        cat = self.db.getCategory(category)
         total = 0
         for n in xrange(1, self.ngram+1):
             self.logger.debug('Processing %d-gram', n)
             terms_count = {}
             sum = 0
-            count = 0
+            variety = 0
             # count number of terms
             for term in iterTerms(n, text):
                 terms_count.setdefault(term, 0)
                 if terms_count[term] == 0:
-                    count += 1
+                    variety += 1
                 terms_count[term] += 1
                 total += 1
             # add terms to database
             for i, (term, delta) in enumerate(terms_count.iteritems()):
-                result = self.db.increase(term, delta)
+                result = cat.increaseTerm(term, delta)
                 sum += delta
                 if i % self.progress_interval == 0:
                     whole = len(terms_count)
@@ -381,9 +490,9 @@ class LexiconBuilder(object):
                     self.logger.info('Progress %d/%d (%02d%%)', i, whole, per)
                                       
             # add n-gram count
-            result = self.db.increaseNgramSum(n, sum)
+            result = cat.increaseGramSum(n, sum)
             self.logger.debug('Increase %d-gram sum to %d', n, result)
-            result = self.db.increaseNgramCount(n, count)
-            self.logger.debug('Increase %d-gram count to %d', n, result)
+            result = cat.increaseGramVariety(n, variety)
+            self.logger.debug('Increase %d-gram variety to %d', n, result)
         self.logger.info('Fed %d terms', total)
         return total

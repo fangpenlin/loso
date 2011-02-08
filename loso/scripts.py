@@ -9,10 +9,12 @@ import service
 
 class InteractCommand(Command):
     description = 'provide interact interface for testing splitting terms'
-    user_options = []
+    user_options = [
+        ('category=', 'c', 'category name'),
+    ]
 
     def initialize_options(self):
-        pass
+        self.category = None
     
     def finalize_options(self):
         pass
@@ -22,7 +24,7 @@ class InteractCommand(Command):
         seg_service = service.SegumentService()
         while True:
             text = raw_input('Text:').decode(sys.stdin.encoding)
-            terms = seg_service.splitTerms(text)
+            terms = seg_service.splitTerms(text, self.category)
             print ' '.join(terms)
 
 class FeedCommand(Command):
@@ -30,23 +32,27 @@ class FeedCommand(Command):
     user_options = [
         ('file=', 'f', 'text file to feed'),
         ('encoding=', 'e', 'encoding of text file'),
+        ('category=', 'c', 'category name'),
     ]
 
     def initialize_options(self):
         self.encoding = 'utf8'
         self.file = None
+        self.category = None
     
     def finalize_options(self):
         import codecs
         if not self.file:
             raise DistutilsOptionError('Must set text file path to feed')
+        if not self.category:
+            raise DistutilsOptionError('Must set category to feed')
         self.text_file = codecs.open(self.file, 'rt', encoding=self.encoding)
         self.text = self.text_file.read()
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
         seg_service = service.SegumentService()
-        seg_service.feed(self.text)
+        seg_service.feed(self.category, self.text)
         
 class ResetCommand(Command):
     description = 'reset lexicon database'
@@ -61,7 +67,7 @@ class ResetCommand(Command):
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
         seg_service = service.SegumentService()
-        seg_service.db.reset()
+        seg_service.db.clean()
         print 'Done.'
         
 class ServeCommand(Command):

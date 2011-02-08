@@ -78,7 +78,7 @@ def splitSentence(text, delimiters=None):
             sentence.append(c)
     yield ''.join(sentence)
     
-def iterTerms(n, text, emmit_head_tail=True):
+def iterTerms(n, text, emmit_head_tail=False):
     """Iterate n-gram terms in given text and return a generator. 
     
     All English in 
@@ -231,7 +231,7 @@ class LexiconCategory(object):
     
     @property
     def gram(self):
-        return self.getMeta('gram')
+        return int(self.getMeta('gram') or 0)
     
     def increaseTerm(self, term, delta=1):
         """Increase value of a term
@@ -282,32 +282,39 @@ class LexiconCategory(object):
         
         """
         key = '%s-gram-sum' % n
-        return self.getMeta(key)
+        return int(self.getMeta(key) or 0)
     
     def getGramVariety(self, n):
         """Get variety of n-gram terms
         
         """
         key = '%s-gram-variety' % n
-        return self.getMeta(key)
+        return int(self.getMeta(key) or 0)
     
     def getStats(self):
         """Get statistics of this category
         
         """
-        stats = {}
-        for n in xrange(1, self.gram):
+        stats = dict(
+            gram=self.gram,
+            total_sum=0,
+            total_variety=0
+        )
+        for n in xrange(1, self.gram + 1):
             sum = self.getGramSum(n)
-            variety = self.getGramCount(n)
-            sum_key = '%s-gram-sum' % n
-            variety_key = '%s-gram-variety' % n
+            variety = self.getGramVariety(n)
+            sum_key = '%sgram_sum' % n
+            variety_key = '%sgram_variety' % n
             stats[sum_key] = sum
             stats[variety_key] = variety
+            stats['total_sum'] += sum
+            stats['total_variety'] += variety
         return stats
      
     def dump(self, file):
         self.logger.info('Dumping meta-data ...')
-        for n in xrange(1, self.gram):
+        print >>file, 'gram', self.gram
+        for n in xrange(1, self.gram + 1):
             name = '%d-gram-sum' % n
             value = self.getGramSum(n)
             print >>file, name, value
@@ -327,7 +334,7 @@ class LexiconCategory(object):
         values = self.getTerms(*terms)
         self.logger.info('Get %d values', len(terms))
         for i, (term, count) in enumerate(zip(terms, values)):
-            term = term[len(self.lexicon_prefix):].decode('utf8')
+            term = term.decode('utf8')
             print >>file, count, term
             if i % self.progress_interval == 0:
                 if i % self.progress_interval == 0:
@@ -382,7 +389,20 @@ class LexiconDatabase(object):
         self._category_set_key = self.prefix + 'category'
     
     def getCategory(self, name):
-        """Get category and return, if not exist, just create one
+        """Get category and return 
+        
+        """
+        if name not in self.getCategoryList():
+            return 
+        category = self._categories_cache.get(name)
+        if category:
+            return category
+        category = LexiconCategory(self, name)
+        self._categories_cache[name] = category
+        return category
+    
+    def addCategory(self, name):
+        """Add a category and return
         
         """
         category = self._categories_cache.get(name)
@@ -415,19 +435,18 @@ class LexiconDatabase(object):
         """Get score of a term
         
         """
-        sum = 0
+        score = 0.00000001
         for c in categories:
             count = int(c.getTerm(term) or 0)
             n = len(term)
-            if c.getGramSum(n) is None:
+            sum = int(c.getGramSum(n) or 0)
+            variety = int(c.getGramVariety(n) or 0)
+            if not variety:
                 v = 1
             else:
-                v = float(c.getGramSum(n))/float(c.getGramVariety(n))
+                v = sum/float(variety)
                 v *= v
-            score = count/v
-            if score == 0:
-                score = 0.00000001
-            sum += score
+            score += count/v
         return score
 
     def splitTerms(self, text, categories=None):
@@ -436,9 +455,16 @@ class LexiconDatabase(object):
         categories
         
         """
+        all_category = self.getCategoryList()
         if not categories:
-            categories = self.getCategoryList()
-        c_list = [self.getCategory(name) for name in categories]
+            categories = all_category
+        c_list = []
+        for name in categories:
+            c = self.getCategory(name)
+            if not c:
+                self.logger.error('Category %s not exist', name)
+                continue
+            c_list.append(c)
         grams = []
         for n in xrange(1, self.ngram+1):
             terms = []
@@ -466,7 +492,7 @@ class LexiconBuilder(object):
         """Feed text into lexicon database and return total terms has been fed
         
         """
-        cat = self.db.getCategory(category)
+        cat = self.db.addCategory(category)
         total = 0
         for n in xrange(1, self.ngram+1):
             self.logger.debug('Processing %d-gram', n)

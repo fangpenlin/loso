@@ -10,14 +10,15 @@ import service
 class InteractCommand(Command):
     description = 'provide interact interface for testing splitting terms'
     user_options = [
-        ('category=', 'c', 'category name'),
+        ('category=', 'c', 'category name, split by comma'),
     ]
 
     def initialize_options(self):
         self.category = None
     
     def finalize_options(self):
-        pass
+        if self.category:
+            self.category = self.category.split(',')
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
@@ -105,21 +106,63 @@ class DumpCommand(Command):
     user_options = [
         ('file=', 'f', '/path/to/text'),
         ('encoding=', 'e', 'encoding of text file'),
+        ('category=', 'c', 'category name'),
     ]
 
     def initialize_options(self):
         self.encoding = 'utf8'
         self.file = None
+        self.category = None
     
     def finalize_options(self):
         import codecs
         if not self.file:
-            raise DistutilsOptionError('Must set text file path to feed')
+            raise DistutilsOptionError('Must set text file path to dump')
+        if not self.category:
+            raise DistutilsOptionError('Must set category to dump')
         self.text_file = codecs.open(self.file, 'wt', encoding=self.encoding)
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
         seg_service = service.SegumentService()
-        seg_service.db.dump(self.text_file)
+        c = seg_service.db.getCategory(self.category)
+        if not c:
+            print 'Category %s not exist' % self.category
+            return
+        c.dump(self.text_file)
         self.text_file.close()
         print 'Done.'
+        
+class InfoCommand(Command):
+    description = 'Display info of lexicon database'
+    user_options = [
+        ('category=', 'c', 'category name to display, split by comma'),
+    ]
+
+    def initialize_options(self):
+        self.category = None
+    
+    def finalize_options(self):
+        if self.category:
+            self.category = self.category.split(',')
+
+    def run(self):
+        logging.basicConfig(level=logging.DEBUG)
+        seg_service = service.SegumentService()
+        c_list = self.category
+        if not c_list:
+            c_list = seg_service.db.getCategoryList()
+        print 
+        for name in c_list:
+            c = seg_service.db.getCategory(name)
+            if c is None:
+                print 'No such category', name
+                continue
+            stats = c.getStats()
+            print 'Category ' + name
+            print '=========' + '='*len(name)
+            print 'Ngram:', stats['gram']
+            for n in xrange(1, stats['gram']+1):
+                print '%d-gram sum:' % n, stats['%sgram_sum' % n]
+                print '%d-gram variety:' % n, stats['%sgram_variety' % n]
+            print 

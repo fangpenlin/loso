@@ -1,16 +1,29 @@
 # -*- coding: utf8 -*-
 import logging
 
+import redis
+
 from loso import lexicon
 
 class SegumentService(object):
     
-    def __init__(self, ngram=4, logger=None):
+    def __init__(self, config, logger=None):
         self.logger = logger
         if self.logger is None:
             self.logger = logging.getLogger(__name__)
-        self.ngram = ngram
-        self.db = lexicon.LexiconDatabase()
+        self.ngram = 4
+        self.config = config
+
+        # get ngram configuration
+        c = config.get('lexicon')
+        if c:
+            self.ngram = c.get('ngram', self.ngram)
+
+        # get redis config
+        c = config.get('redis', {})
+        redis_db = redis.Redis(**c)
+
+        self.db = lexicon.LexiconDatabase(redis_db)
         self.builder = lexicon.LexiconBuilder(self.db, self.ngram)
     
     def getStats(self):

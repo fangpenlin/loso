@@ -7,6 +7,17 @@ import yaml
 
 import service
 
+def _loadConfig(default_path='default.yaml'):
+    import os
+    logger = logging.getLogger(__name__)
+    path = default_path
+    k = 'LOSO_CONFIG_FILE'
+    if k in os.environ:
+        path = os.environ[k]
+    cfg = yaml.load(open(path, 'rt'))
+    logger.info('Load configuration %s', path)
+    return cfg
+
 class InteractCommand(Command):
     description = 'provide interact interface for testing splitting terms'
     user_options = [
@@ -22,7 +33,8 @@ class InteractCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+        seg_service = service.SegumentService(cfg)
         while True:
             text = raw_input('Text:').decode(sys.stdin.encoding)
             terms = seg_service.splitTerms(text, self.category)
@@ -52,7 +64,8 @@ class FeedCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+        seg_service = service.SegumentService(cfg)
         seg_service.feed(self.category, self.text)
         
 class ResetCommand(Command):
@@ -67,21 +80,20 @@ class ResetCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+        seg_service = service.SegumentService(cfg)
         seg_service.db.clean()
         print 'Done.'
         
 class ServeCommand(Command):
     description = 'run segmentation server'
-    user_options = [
-        ('config=', 'c', 'path to configuration'),
-    ]
+    user_options = []
 
     def initialize_options(self):
-        self.config_file = 'config.yaml'
+        pass
     
     def finalize_options(self):
-        self.config = yaml.load(open(self.config_file, 'rt'))
+        pass
 
     def run(self):
         from SimpleXMLRPCServer import SimpleXMLRPCServer
@@ -89,11 +101,13 @@ class ServeCommand(Command):
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger('segment.main')
         
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+
+        seg_service = service.SegumentService(cfg)
         
-        xmlrpc_config = self.config['xmlrpc']
-        interface = xmlrpc_config.get('interface', '0.0.0.0')
-        port = xmlrpc_config.get('port', 5566)
+        xcfg= cfg['xmlrpc']
+        interface = xcfg.get('interface', '0.0.0.0')
+        port = xcfg.get('port', 5566)
         logger.info('Start segmentation service at %s:%d', interface, port)
         
         server = SimpleXMLRPCServer((interface, port), allow_none=True)
@@ -124,7 +138,8 @@ class DumpCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+        seg_service = service.SegumentService(cfg)
         c = seg_service.db.getCategory(self.category)
         if not c:
             print 'Category %s not exist' % self.category
@@ -148,7 +163,8 @@ class InfoCommand(Command):
 
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
-        seg_service = service.SegumentService()
+        cfg = _loadConfig()
+        seg_service = service.SegumentService(cfg)
         c_list = self.category
         if not c_list:
             c_list = seg_service.db.getCategoryList()

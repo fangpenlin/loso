@@ -3,8 +3,6 @@
 import re
 import logging
 
-from redis import Redis
-
 from loso import util
 
 # default delimiters for splitSentence
@@ -373,6 +371,7 @@ class LexiconDatabase(object):
     
     def __init__(
         self, 
+        redis,
         ngram=4,
         prefix='loso:', 
         logger=None
@@ -380,7 +379,7 @@ class LexiconDatabase(object):
         self.logger = logger
         if self.logger is None:
             self.logger = logging.getLogger('lexicon.database')
-        self.redis = Redis()
+        self.redis = redis
         self.ngram = ngram
         self.prefix = prefix
         

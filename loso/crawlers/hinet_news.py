@@ -52,7 +52,7 @@ def main():
     with codecs.open('hinet_news.txt', 'wt', encoding='utf8') as file:
         for url in rss_urls:
             for text in crawelCategory(url):
-                print text
+                print 'Write %d bytes' % len(text)
                 print >> file, text
     print 'Done.'
             

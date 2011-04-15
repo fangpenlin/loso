@@ -22,7 +22,7 @@ else:
 setup(
     name='Plurk_Loso',
     version='0.1',
-    license='MIT',
+    license='BSD',
     author='Plurk Inc.',
     author_email='opensource@plurk.com',
     description='Chinese segmentation library',

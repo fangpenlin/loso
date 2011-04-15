@@ -78,7 +78,7 @@ To use the segmentation service as XMLRPC service, here you can run
 Following is a simple Python program for showing how to use it
 
 
-:: code-block:: python
+.. code-block:: python
 
    import xmlrpclib
    
